@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bioai-platform"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "supabase>=2.0",
+    "python-jose[cryptography]>=3.3",
+    "azure-storage-blob>=12.19",
+    "azure-servicebus>=7.11",
+    "azure-identity>=1.15",
+    "python-multipart>=0.0.7",
+    "cryptography>=42.0",
+    "structlog>=24.1",
+    "pyyaml>=6.0",
+    "cachetools>=5.3",
+    "tenacity>=8.2",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+mcp = [
+    "mcp[cli]>=1.0",
+]
+
+[project.scripts]
+boltz2-mcp = "boltz2_service.mcp.stdio:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,14 @@
+.git
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+.local-storage
+bioai_platform.db
+.env
+.env.local
+docs
+tests
+scripts
+*.md
