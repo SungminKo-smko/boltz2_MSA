@@ -69,6 +69,7 @@ class SpecValidatorService:
                 "--out_dir", str(output_dir),
                 "--cache", self.settings.boltz2_cache_dir,
                 "--override",
+                "--accelerator", "cpu",
                 "--recycling_steps", "1",
                 "--sampling_steps", "1",
                 "--diffusion_samples", "1",
@@ -138,10 +139,10 @@ class SpecValidatorService:
                 code="invalid_spec_shape",
                 message="Top-level YAML document must be a mapping",
             )
-        entities = parsed.get("entities")
-        if not isinstance(entities, list) or not entities:
+        sequences = parsed.get("sequences")
+        if not isinstance(sequences, list) or not sequences:
             return ErrorDetail(
-                code="missing_entities",
-                message="Boltz-2 spec must contain a non-empty entities list",
+                code="missing_sequences",
+                message="Boltz-2 spec must contain a non-empty sequences list",
             )
         return None

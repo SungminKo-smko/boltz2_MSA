@@ -20,12 +20,14 @@ from pathlib import Path
 import structlog
 import yaml
 from fastapi import HTTPException
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.fastmcp import FastMCP
 from mcp.server.streamable_http import TransportSecuritySettings
 
 from boltz2_service.config import get_blob_storage, get_settings
 from boltz2_service.enums import AssetKind
 from boltz2_service.mcp.auth import mcp_auth
+from boltz2_service.mcp.oauth_provider import Boltz2OAuthProvider
 from boltz2_service.models import Boltz2Asset
 from boltz2_service.repositories import AssetRepository
 from boltz2_service.schemas.jobs import Boltz2RuntimeOptions, PredictionJobCreate
@@ -37,10 +39,31 @@ from platform_core.auth.api_key_auth import ApiKeyAuthService
 
 logger = structlog.get_logger(__name__)
 
+_settings = get_settings()
+_oauth_provider = Boltz2OAuthProvider()
+
 mcp = FastMCP(
     "boltz2",
+    auth_server_provider=_oauth_provider,
+    auth=AuthSettings(
+        issuer_url=_settings.mcp_issuer_url,
+        resource_server_url=_settings.mcp_issuer_url,
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True,
+            valid_scopes=["boltz2"],
+            default_scopes=["boltz2"],
+        ),
+        revocation_options=RevocationOptions(enabled=True),
+    ),
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
+
+
+# OAuth callback route — Supabase redirects here after Google login
+# {session_id} is in the URL path to avoid Supabase redirect URL matching issues
+@mcp.custom_route("/oauth/callback/{session_id}", methods=["GET", "POST"])
+async def oauth_callback(request):
+    return await _oauth_provider.handle_oauth_callback(request)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +267,7 @@ def validate_spec(raw_yaml: str, asset_ids: list[str], api_key: str = "") -> dic
 
         spec = renderer.create_raw_spec(key.id, raw_yaml, asset_ids)
         result = validator.validate(spec)
+        db.commit()
 
         if not result.valid:
             return {
@@ -268,7 +292,7 @@ def validate_spec(raw_yaml: str, asset_ids: list[str], api_key: str = "") -> dic
 @_mcp_error_handler
 def render_template(
     target_asset_id: str,
-    additional_entities: list[dict] | None = None,
+    additional_sequences: list[dict] | None = None,
     constraints: list[dict] | None = None,
     api_key: str = "",
 ) -> dict:
@@ -276,11 +300,11 @@ def render_template(
     Render a Boltz-2 structure prediction spec from the template.
 
     This is the recommended way to create a spec. The server generates YAML
-    automatically from a target structure asset and optional entities/constraints.
+    automatically from a target structure asset and optional sequences/constraints.
 
     Args:
         target_asset_id: asset_id from upload_structure (target .cif or .pdb).
-        additional_entities: Optional list of extra entity dicts, e.g.
+        additional_sequences: Optional list of extra sequence dicts, e.g.
             [{"protein": {"id": "B", "sequence": "MKTL..."}}]
         constraints: Optional Boltz-2 constraints block as a list of dicts.
         api_key: Boltz-2 API key (x-api-key).
@@ -291,12 +315,13 @@ def render_template(
     payload = RenderSpecRequest(
         template_name="boltz2_structure_prediction",
         target_asset_id=target_asset_id,
-        additional_entities=additional_entities or [],
+        additional_sequences=additional_sequences or [],
         constraints=constraints or [],
     )
 
     with mcp_auth(api_key) as (db, key):
         result = SpecRendererService(db).render_template(key.id, payload)
+        db.commit()
         return {
             "spec_id": result.spec_id,
             "canonical_yaml": result.canonical_yaml,
@@ -597,7 +622,7 @@ def submit_nanobody_structure_prediction(
 
     Bridges boltzgen (nanobody design) output to Boltz-2 structure prediction.
     Takes a nanobody amino-acid sequence from boltzgen and a pre-uploaded target
-    structure asset, automatically generates a Boltz-2 v2 YAML spec, validates it,
+    structure asset, automatically generates a Boltz-2 v1 YAML spec, validates it,
     and submits a prediction job in one step.
 
     Typical workflow:
@@ -637,11 +662,14 @@ def submit_nanobody_structure_prediction(
             return {"error": f"Target asset not found: {target_asset_id}"}
         target_asset = assets[0]
 
+        target_path = target_asset.relative_path or target_asset.filename
         spec_data = {
-            "version": 2,
-            "entities": [
-                {"cif": {"path": target_asset.relative_path or target_asset.filename}},
+            "version": 1,
+            "sequences": [
                 {"protein": {"id": nanobody_chain_id, "sequence": clean_seq}},
+            ],
+            "templates": [
+                {"cif": target_path},
             ],
         }
         raw_yaml = yaml.safe_dump(spec_data, sort_keys=False)
@@ -651,6 +679,7 @@ def submit_nanobody_structure_prediction(
 
         spec = renderer.create_raw_spec(key.id, raw_yaml, [target_asset_id])
         result = validator.validate(spec)
+        db.commit()
 
         if not result.valid:
             return {

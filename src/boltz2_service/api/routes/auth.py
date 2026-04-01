@@ -36,10 +36,11 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _find_active_api_key(db: Session, profile_id: str) -> ApiKey | None:
+def _find_active_api_key(db: Session, profile_id: str, service: str = "boltz2") -> ApiKey | None:
     return db.scalar(
         select(ApiKey).where(
             ApiKey.profile_id == profile_id,
+            ApiKey.service == service,
             ApiKey.is_active.is_(True),
         )
     )
@@ -274,6 +275,7 @@ async def verify_device_code(
         raw_key, key_hash = create_api_key_pair(prefix="b2")
         device_key = ApiKey(
             profile_id=profile.id,
+            service="boltz2",
             name="device",
             key_hash=key_hash,
         )

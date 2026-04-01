@@ -15,9 +15,10 @@ def get_engine():
     kwargs: dict = {"future": True}
 
     if settings.database_url.startswith("postgresql"):
-        # Supabase PgBouncer (transaction mode) 호환:
-        # - NullPool: SQLAlchemy 자체 풀링 비활성화, PgBouncer에 위임
+        # Supabase Pooler (transaction mode) 호환:
+        # - NullPool: SQLAlchemy 자체 풀링 비활성화
         # - prepare_threshold=0: prepared statements 비활성화
+        # - options: statement-level prepare threshold override
         kwargs["poolclass"] = NullPool
         kwargs["connect_args"] = {"prepare_threshold": 0}
 
@@ -46,9 +47,21 @@ def get_db_session() -> Generator[Session, None, None]:
         db.close()
 
 
-def init_db(*, create_tables: bool = True) -> None:
+def init_db(*, create_tables: bool = True, model_modules: list[str] | None = None) -> None:
+    """Initialize the database, optionally creating tables.
+
+    Args:
+        create_tables: Whether to run CREATE TABLE statements.
+        model_modules: List of dotted module paths to import so that their
+            SQLAlchemy models are registered on Base.metadata before
+            create_all is called.  Example: ["boltz2_service.models"]
+    """
+    import importlib
+
     from platform_core.models import Base  # noqa: F401
-    import boltz2_service.models  # noqa: F401
+
+    for mod in model_modules or []:
+        importlib.import_module(mod)
 
     if create_tables:
         engine = get_engine()
