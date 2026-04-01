@@ -4,10 +4,25 @@ from functools import lru_cache
 
 from pydantic import Field
 
-from platform_core.config import PlatformSettings
+from platform_core.config import PlatformCoreSettings
 
 
-class Boltz2Settings(PlatformSettings):
+class Boltz2Settings(PlatformCoreSettings):
+    # Azure Blob Storage
+    blob_backend: str = "local"
+    local_storage_root: str = ".local-storage"
+    azure_storage_account_url: str | None = None
+    azure_storage_connection_string: str | None = None
+    azure_storage_account_name: str | None = None
+    azure_storage_account_key: str | None = None
+
+    # Azure Service Bus
+    queue_backend: str = "local"
+    service_bus_connection_string: str | None = None
+
+    # MCP OAuth
+    mcp_issuer_url: str = "https://boltz2-api.politebay-55ff119b.westus3.azurecontainerapps.io/mcp"
+
     # Azure containers / queue
     azure_input_container: str = "boltz2-inputs"
     azure_results_container: str = "boltz2-results"

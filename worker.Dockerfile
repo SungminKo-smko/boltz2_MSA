@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.2.2-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HF_HOME=/cache
@@ -23,8 +23,16 @@ RUN python3.11 -m ensurepip --upgrade && \
     ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
     ln -sf /usr/bin/python3.11 /usr/local/bin/python3
 
-# Install boltz2 with CUDA support
-RUN pip install --no-cache-dir "boltz[cuda]==2.2.0"
+# Install PyTorch for CUDA 12.4 driver compatibility, then boltz2
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+RUN pip install --no-cache-dir "boltz==2.2.0"
+
+# cuEquivariance kernels — accelerates triangular attention/multiplication on A100
+RUN pip install --no-cache-dir \
+    "cuequivariance_torch>=0.5.0" \
+    "cuequivariance_ops_torch_cu12>=0.5.0" \
+    "cuequivariance_ops_cu12>=0.5.0" \
+    || echo "WARN: cuequivariance install failed, will use --no_kernels fallback"
 
 # Pre-download model weights (cache buster: change date to force re-download)
 RUN mkdir -p /cache && boltz predict --help || true
@@ -34,7 +42,8 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 RUN pip install --no-cache-dir .
 
-RUN useradd -m -u 1000 worker
+RUN useradd -m -u 1000 worker && \
+    chown -R worker:worker /cache
 USER worker
 
 CMD ["python", "-m", "boltz2_service.worker.app"]

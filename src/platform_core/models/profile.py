@@ -31,7 +31,14 @@ class Profile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, onupdate=utc_now)
 
-    api_key: Mapped["ApiKey | None"] = relationship(  # noqa: F821
+    api_keys: Mapped[list["ApiKey"]] = relationship(  # noqa: F821
         back_populates="profile",
-        uselist=False,
+        uselist=True,
     )
+
+    def get_api_key(self, service: str) -> "ApiKey | None":
+        """Return the active API key for a specific service, or None."""
+        for key in self.api_keys:
+            if key.service == service and key.is_active:
+                return key
+        return None

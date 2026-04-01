@@ -10,9 +10,11 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir . && \
-    pip install --no-cache-dir "mcp[cli]>=1.0"
+    pip install --no-cache-dir "mcp[cli]>=1.0" && \
+    pip install --no-cache-dir "boltz==2.2.0"
 
-RUN useradd -m -u 1000 appuser
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/data /cache && chown appuser:appuser /app/data /cache
 USER appuser
 
 EXPOSE 8001

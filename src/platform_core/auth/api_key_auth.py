@@ -13,6 +13,10 @@ logger = structlog.get_logger(__name__)
 
 
 class ApiKeyAuthService:
+    # Override in subclasses for service-specific status values.
+    heartbeat_active_states: list[str] = ["running", "uploading"]
+    all_active_states: list[str] = ["queued", "running", "uploading"]
+
     def __init__(self, db: Session) -> None:
         self.db = db
         self.settings = get_settings()
@@ -35,7 +39,7 @@ class ApiKeyAuthService:
             )
         api_key.last_used_at = utc_now()
         self.db.add(api_key)
-        self.db.commit()
+        self.db.flush()
         return api_key
 
     def assert_can_submit(self, api_key: ApiKey, job_model) -> None:
@@ -69,13 +73,12 @@ class ApiKeyAuthService:
         heartbeat_cutoff = now - timedelta(seconds=self.settings.job_heartbeat_timeout_seconds)
         queued_cutoff = now - timedelta(seconds=self.settings.job_queued_timeout_seconds)
 
-        active_states = ["running", "uploading"]
         from sqlalchemy import update
 
         stale_active = self.db.execute(
             select(job_model.id).where(
                 job_model.created_by_api_key_id == api_key.id,
-                job_model.status.in_(active_states),
+                job_model.status.in_(self.heartbeat_active_states),
                 job_model.updated_at < heartbeat_cutoff,
             )
         ).scalars().all()
@@ -104,11 +107,10 @@ class ApiKeyAuthService:
             logger.info("expired_stale_jobs", count=len(expired_ids), api_key_id=api_key.id)
 
         # Check concurrent limit
-        all_active = ["queued", "running", "uploading"]
         active_count = self.db.scalar(
             select(func.count(job_model.id)).where(
                 job_model.created_by_api_key_id == api_key.id,
-                job_model.status.in_(all_active),
+                job_model.status.in_(self.all_active_states),
             )
         ) or 0
 

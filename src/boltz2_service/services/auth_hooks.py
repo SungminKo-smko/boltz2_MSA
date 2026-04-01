@@ -25,6 +25,7 @@ def on_user_authenticated(profile: Profile, db: Session) -> str | None:
     existing_id = db.scalar(
         select(ApiKey.id).where(
             ApiKey.profile_id == profile.id,
+            ApiKey.service == "boltz2",
             ApiKey.is_active.is_(True),
         ).limit(1)
     )
@@ -35,6 +36,7 @@ def on_user_authenticated(profile: Profile, db: Session) -> str | None:
     raw_key, key_hash = create_api_key(prefix="b2")
     api_key = ApiKey(
         profile_id=profile.id,
+        service="boltz2",
         name="auto",
         key_hash=key_hash,
         daily_job_limit=rule.daily_job_limit,

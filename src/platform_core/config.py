@@ -8,7 +8,12 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class PlatformSettings(BaseSettings):
+class PlatformCoreSettings(BaseSettings):
+    """Core settings shared across all services.
+
+    Service-specific settings should subclass this and add their own fields.
+    """
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "bioai-platform"
@@ -22,18 +27,6 @@ class PlatformSettings(BaseSettings):
 
     # Database (Supabase PostgreSQL direct connection)
     database_url: str = "sqlite+pysqlite:///./bioai_platform.db"
-
-    # Azure Blob Storage
-    blob_backend: Literal["local", "azure"] = "local"
-    local_storage_root: Path = Path(".local-storage")
-    azure_storage_account_url: str | None = None
-    azure_storage_connection_string: str | None = None
-    azure_storage_account_name: str | None = None
-    azure_storage_account_key: str | None = None
-
-    # Azure Service Bus
-    queue_backend: Literal["local", "azure"] = "local"
-    service_bus_connection_string: str | None = None
 
     # Domain rules
     auto_approve_domains: list[str] = ["shaperon.com"]
@@ -52,6 +45,29 @@ class PlatformSettings(BaseSettings):
     max_result_url_ttl_seconds: int = Field(default=3600, ge=60)
 
 
+# Backward compatibility alias
+PlatformSettings = PlatformCoreSettings
+
+
+# --- Settings Registry ---
+# Services call register_settings() at startup; platform_core reads via get_settings().
+
+_settings_instance: PlatformCoreSettings | None = None
+
+
+def register_settings(settings: PlatformCoreSettings) -> None:
+    """Register the service-specific settings instance for platform_core to use."""
+    global _settings_instance
+    _settings_instance = settings
+
+
 @lru_cache(maxsize=1)
-def get_settings() -> PlatformSettings:
-    return PlatformSettings()
+def _default_settings() -> PlatformCoreSettings:
+    return PlatformCoreSettings()
+
+
+def get_settings() -> PlatformCoreSettings:
+    """Return the registered settings, or create default PlatformCoreSettings."""
+    if _settings_instance is not None:
+        return _settings_instance
+    return _default_settings()
