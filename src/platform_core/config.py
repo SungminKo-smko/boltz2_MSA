@@ -61,6 +61,13 @@ def register_settings(settings: PlatformCoreSettings) -> None:
     _settings_instance = settings
 
 
+def reset_settings() -> None:
+    """Clear the registered settings (useful for tests with monkeypatch)."""
+    global _settings_instance
+    _settings_instance = None
+    _default_settings.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def _default_settings() -> PlatformCoreSettings:
     return PlatformCoreSettings()
