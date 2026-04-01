@@ -28,5 +28,5 @@ azure = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = [".."]
 include = ["platform_core*"]
