@@ -342,6 +342,7 @@ def submit_job(
     sampling_steps: int = 200,
     recycling_steps: int = 3,
     step_scale: float | None = None,
+    max_parallel_samples: int = 5,
     output_format: str = "mmcif",
     use_potentials: bool = False,
     use_msa_server: bool = True,
@@ -356,10 +357,11 @@ def submit_job(
     Args:
         spec_id: Validated spec_id from validate_spec or render_template.
         prediction_type: "structure", "affinity", "structure+affinity", or "virtual_screening".
-        diffusion_samples: Number of diffusion samples (1-10, default: 1).
+        diffusion_samples: Number of diffusion samples (1-1000, default: 1). Use higher values (e.g. 100) for ensemble predictions.
         sampling_steps: Number of sampling steps (50-1000, default: 200).
         recycling_steps: Number of recycling steps (1-10, default: 3).
         step_scale: Step scale factor (0.5-3.0, optional).
+        max_parallel_samples: Max samples processed in parallel on GPU (1-100, default: 5). Lower if OOM.
         output_format: "mmcif" or "pdb" (default: "mmcif").
         use_potentials: Enable potential energy guidance (default: False).
         use_msa_server: Use MSA server for alignment (default: True).
@@ -377,6 +379,7 @@ def submit_job(
         sampling_steps=sampling_steps,
         recycling_steps=recycling_steps,
         step_scale=step_scale,
+        max_parallel_samples=max_parallel_samples,
         output_format=output_format,
         use_potentials=use_potentials,
         use_msa_server=use_msa_server,
