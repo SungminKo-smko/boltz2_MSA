@@ -42,10 +42,10 @@ class SpecRendererService:
                             description="Uploaded target structure asset (.cif or .pdb).",
                         ),
                         SpecTemplateField(
-                            name="additional_entities",
-                            type="entity[]",
+                            name="additional_sequences",
+                            type="sequence[]",
                             required=False,
-                            description="Extra entities (protein sequences, ligands, etc.) to include.",
+                            description="Extra sequences (protein sequences, ligands, etc.) to include.",
                         ),
                         SpecTemplateField(
                             name="constraints",
@@ -57,7 +57,7 @@ class SpecRendererService:
                     example_payload={
                         "template_name": "boltz2_structure_prediction",
                         "target_asset_id": "asset-uuid",
-                        "additional_entities": [
+                        "additional_sequences": [
                             {"protein": {"id": "B", "sequence": "MKTL..."}},
                         ],
                     },
@@ -77,13 +77,15 @@ class SpecRendererService:
 
         target_asset = assets[0]
 
-        entities: list[dict[str, Any]] = [
-            {"cif": {"path": target_asset.relative_path or target_asset.filename}}
-        ]
-        for entity in payload.additional_entities:
-            entities.append(entity)
+        sequences: list[dict[str, Any]] = []
+        for seq in payload.additional_sequences:
+            sequences.append(seq)
 
-        spec_data: dict[str, Any] = {"version": 2, "entities": entities}
+        spec_data: dict[str, Any] = {"version": 1, "sequences": sequences}
+
+        # Add target structure as a template reference
+        target_path = target_asset.relative_path or target_asset.filename
+        spec_data["templates"] = [{"cif": target_path}]
         if payload.constraints:
             spec_data["constraints"] = payload.constraints
 

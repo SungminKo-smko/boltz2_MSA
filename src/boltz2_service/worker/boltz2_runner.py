@@ -33,6 +33,18 @@ BOOLEAN_SWITCH_FLAGS = {
 }
 
 
+def _has_cuequivariance() -> bool:
+    """Check if cuequivariance_torch is available at import time."""
+    try:
+        import cuequivariance_torch  # noqa: F401
+        return True
+    except ModuleNotFoundError:
+        return False
+
+
+_CUEQ_AVAILABLE = _has_cuequivariance()
+
+
 class Boltz2Runner:
     def __init__(self, settings: Boltz2Settings) -> None:
         self.settings = settings
@@ -50,7 +62,11 @@ class Boltz2Runner:
             "--cache", self.settings.boltz2_cache_dir,
             "--override",
             "--devices", str(self.settings.boltz2_devices),
+            "--num_workers", "0",
         ]
+
+        if not _CUEQ_AVAILABLE:
+            cmd.append("--no_kernels")
 
         if runtime_options.get("use_msa_server", True):
             cmd += ["--use_msa_server", "--msa_server_url", self.settings.msa_server_url]

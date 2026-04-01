@@ -70,6 +70,11 @@ class JobProcessor:
                 return
             except subprocess.CalledProcessError as exc:
                 output = (exc.output or "").strip()
+                # Remove NUL bytes — PostgreSQL text fields reject them
+                output = output.replace("\x00", "")
+                # Truncate to 4000 chars to avoid oversized failure messages
+                if len(output) > 4000:
+                    output = output[:4000] + "...(truncated)"
                 self._mark_failed(
                     db, job, "boltz2_run_failed",
                     output or "boltz2 run failed",

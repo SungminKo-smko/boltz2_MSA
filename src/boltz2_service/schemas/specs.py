@@ -27,7 +27,7 @@ class RenderSpecRequest(BaseModel):
 
     template_name: str
     target_asset_id: str
-    additional_entities: list[dict] = Field(default_factory=list)
+    additional_sequences: list[dict] = Field(default_factory=list)
     constraints: list[dict] = Field(default_factory=list)
 
 
