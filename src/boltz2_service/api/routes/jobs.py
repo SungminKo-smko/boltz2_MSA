@@ -45,6 +45,27 @@ def get_job(
     return service.to_response(service.get(job_id, api_key.id))
 
 
+@router.get("/{job_id}/status/public")
+def get_job_status_public(
+    job_id: str,
+    db: Session = Depends(get_db),
+):
+    """인증 없이 job 상태를 조회한다 (artifact 전용)."""
+    from boltz2_service.models import Boltz2Job
+
+    job = db.get(Boltz2Job, job_id)
+    if not job:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "current_stage": job.current_stage,
+        "progress_percent": job.progress_percent,
+        "status_message": job.status_message,
+    }
+
+
 @router.get("/{job_id}/artifacts")
 def list_artifacts(
     job_id: str,
