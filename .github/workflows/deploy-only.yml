@@ -1,0 +1,47 @@
+name: Deploy Only (ACA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_image_tag:
+        description: "API image tag (default: latest)"
+        default: "latest"
+      worker_image_tag:
+        description: "Worker image tag (default: latest)"
+        default: "latest"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.ACA_RESOURCE_GROUP }}
+      CONTAINERAPPS_ENV: ${{ vars.ACA_CONTAINERAPPS_ENV }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy
+        env:
+          API_IMAGE_TAG: ${{ inputs.api_image_tag }}
+          WORKER_IMAGE_TAG: ${{ inputs.worker_image_tag }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+          AZURE_STORAGE_ACCOUNT_URL: ${{ secrets.AZURE_STORAGE_ACCOUNT_URL }}
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+          SERVICE_BUS_NAMESPACE: ${{ secrets.SERVICE_BUS_NAMESPACE }}
+          SERVICE_BUS_QUEUE_NAME: ${{ secrets.SERVICE_BUS_QUEUE_NAME || 'boltz2-predict-jobs' }}
+          SERVICE_BUS_CONNECTION_STRING: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
+        run: bash scripts/aca_deploy.sh
