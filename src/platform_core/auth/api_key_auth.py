@@ -103,7 +103,7 @@ class ApiKeyAuthService:
                     finished_at=now,
                 )
             )
-            self.db.flush()
+            self.db.commit()
             logger.info("expired_stale_jobs", count=len(expired_ids), api_key_id=api_key.id)
 
         # Check concurrent limit

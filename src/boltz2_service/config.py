@@ -31,7 +31,7 @@ class Boltz2Settings(PlatformCoreSettings):
     # Boltz-2 runtime
     boltz2_bin: str = "boltz"
     boltz2_cache_dir: str = "/cache"
-    boltz2_run_timeout_seconds: int = 14400
+    boltz2_run_timeout_seconds: int = 0
     boltz2_validate_timeout_seconds: int = 120
     boltz2_devices: int = Field(default=1, ge=1)
 
@@ -40,7 +40,16 @@ class Boltz2Settings(PlatformCoreSettings):
     msa_server_username: str | None = None
     msa_server_password: str | None = None
 
+    # Gmail SMTP
+    smtp_enabled: bool = False
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+
     # Defaults
+    default_max_concurrent_jobs: int = Field(default=5, ge=1)
     default_max_diffusion_samples: int = 10
 
     # ACA (optional)

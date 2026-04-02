@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session, joinedload
 from boltz2_service.config import Boltz2Settings, get_blob_storage
 from boltz2_service.enums import JobStatus
 from boltz2_service.models import Boltz2Job, Boltz2Spec, Boltz2SpecAsset
+from boltz2_service.services.email import EmailService
 from platform_core.db import SessionLocal
+from platform_core.models.api_key import ApiKey
 from platform_core.time_utils import utc_now
 from boltz2_service.worker.artifact_bundle import bundle_output
 from boltz2_service.worker.boltz2_runner import Boltz2Runner, JobCanceledException
@@ -29,6 +31,8 @@ class JobProcessor:
         self.settings = settings
         self.storage = get_blob_storage()
         self.runner = Boltz2Runner(settings)
+        self.email = EmailService(settings)
+        self._last_notified_stage: str | None = None
 
     def process(
         self,
@@ -49,8 +53,8 @@ class JobProcessor:
             if job is None:
                 logger.error("job_not_found", job_id=job_id)
                 return
-            if job.status == JobStatus.canceled:
-                logger.info("job_already_canceled", job_id=job_id)
+            if job.status in {JobStatus.succeeded, JobStatus.failed, JobStatus.canceled}:
+                logger.info("job_already_terminal", job_id=job_id, status=job.status)
                 return
             if not self._mark_running(db, job, pod_name=pod_name, job_name=job_name):
                 return
@@ -183,6 +187,17 @@ class JobProcessor:
 
     # -- State management --------------------------------------------------
 
+    def _get_user_email(self, db: Session, job: Boltz2Job) -> str | None:
+        if not self.email.enabled:
+            return None
+        try:
+            api_key = db.get(ApiKey, job.created_by_api_key_id)
+            if api_key and api_key.profile:
+                return api_key.profile.email
+        except Exception:
+            return None
+        return None
+
     def _mark_running(
         self,
         db: Session,
@@ -203,6 +218,9 @@ class JobProcessor:
         if job.started_at is None:
             job.started_at = utc_now()
         db.commit()
+        email = self._get_user_email(db, job)
+        if email:
+            self.email.notify_job_status(email, job.id, "running", stage="preparing")
         return True
 
     def _mark_failed(
@@ -219,6 +237,9 @@ class JobProcessor:
         job.failure_message = message
         job.finished_at = utc_now()
         db.commit()
+        email = self._get_user_email(db, job)
+        if email:
+            self.email.notify_job_status(email, job.id, "failed", stage="failed", message=message)
 
     def _mark_succeeded(
         self, db: Session, job: Boltz2Job, manifest: dict[str, str]
@@ -233,6 +254,9 @@ class JobProcessor:
         job.artifact_manifest = manifest
         job.finished_at = utc_now()
         db.commit()
+        email = self._get_user_email(db, job)
+        if email:
+            self.email.notify_job_status(email, job.id, "succeeded", stage="completed")
 
     def _update_progress(
         self,
@@ -256,6 +280,11 @@ class JobProcessor:
             if status_message is not None:
                 job.status_message = status_message
             db.commit()
+            if stage is not None and stage != self._last_notified_stage:
+                self._last_notified_stage = stage
+                email = self._get_user_email(db, job)
+                if email:
+                    self.email.notify_stage_change(email, job.id, stage, progress_percent)
 
     def _touch_heartbeat(self, job_id: str) -> None:
         with SessionLocal() as db:
