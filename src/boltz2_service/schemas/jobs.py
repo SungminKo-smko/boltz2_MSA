@@ -9,7 +9,7 @@ from boltz2_service.enums import PredictionType
 
 
 class Boltz2RuntimeOptions(BaseModel):
-    diffusion_samples: int = Field(default=1, ge=1, le=10)
+    diffusion_samples: int = Field(default=1, ge=1, le=1000)
     sampling_steps: int = Field(default=200, ge=50, le=1000)
     recycling_steps: int = Field(default=3, ge=1, le=10)
     step_scale: float | None = Field(default=None, ge=0.5, le=3.0)
@@ -18,7 +18,7 @@ class Boltz2RuntimeOptions(BaseModel):
     use_msa_server: bool = True
     seed: int | None = None
     write_full_pae: bool = False
-    max_parallel_samples: int = Field(default=5, ge=1, le=10)
+    max_parallel_samples: int = Field(default=5, ge=1, le=100)
     affinity_mw_correction: bool = False
     sampling_steps_affinity: int = Field(default=200, ge=50, le=1000)
     diffusion_samples_affinity: int = Field(default=5, ge=1, le=20)

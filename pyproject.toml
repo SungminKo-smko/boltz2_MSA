@@ -32,6 +32,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
+    "ruff>=0.5.0",
 ]
 mcp = [
     "mcp[cli]>=1.0",
@@ -42,3 +43,12 @@ boltz2-mcp = "boltz2_service.mcp.stdio:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]

@@ -64,13 +64,36 @@ jobs:
             ${{ secrets.ACR_LOGIN_SERVER }}/boltz2-api:sha-${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/boltz2-api:latest
 
+  build-worker-image:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: worker.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/boltz2-worker:sha-${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/boltz2-worker:latest
+
   deploy:
-    needs: [detect-changes, build-api-image]
+    needs: [detect-changes, build-api-image, build-worker-image]
     if: |
       always() &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
-      needs.build-api-image.result == 'success'
+      (needs.build-api-image.result == 'success' || needs.build-worker-image.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -89,7 +112,7 @@ jobs:
       - name: Deploy
         env:
           API_IMAGE_TAG: sha-${{ github.sha }}
-          WORKER_IMAGE_TAG: latest
+          WORKER_IMAGE_TAG: ${{ needs.build-worker-image.result == 'success' && format('sha-{0}', github.sha) || 'latest' }}
           ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
@@ -103,4 +126,11 @@ jobs:
           SERVICE_BUS_NAMESPACE: ${{ secrets.SERVICE_BUS_NAMESPACE }}
           SERVICE_BUS_QUEUE_NAME: ${{ secrets.SERVICE_BUS_QUEUE_NAME || 'boltz2-predict-jobs' }}
           SERVICE_BUS_CONNECTION_STRING: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
+          SMTP_ENABLED: "true"
+          SMTP_HOST: "smtp.gmail.com"
+          SMTP_PORT: "587"
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: bash scripts/aca_deploy.sh

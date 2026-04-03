@@ -44,4 +44,11 @@ jobs:
           SERVICE_BUS_NAMESPACE: ${{ secrets.SERVICE_BUS_NAMESPACE }}
           SERVICE_BUS_QUEUE_NAME: ${{ secrets.SERVICE_BUS_QUEUE_NAME || 'boltz2-predict-jobs' }}
           SERVICE_BUS_CONNECTION_STRING: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
+          SMTP_ENABLED: "true"
+          SMTP_HOST: "smtp.gmail.com"
+          SMTP_PORT: "587"
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: bash scripts/aca_deploy.sh

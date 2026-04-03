@@ -67,7 +67,7 @@ api_env_vars=(
   "AZURE_INPUT_CONTAINER=boltz2-inputs"
   "AZURE_RESULTS_CONTAINER=boltz2-results"
   "SERVICE_BUS_QUEUE_NAME=${SERVICE_BUS_QUEUE_NAME}"
-  "ACA_SUBSCRIPTION_ID=${ACA_SUBSCRIPTION_ID:-}"
+  "ACA_SUBSCRIPTION_ID=${ACA_SUBSCRIPTION_ID:-${AZURE_SUBSCRIPTION_ID:-}}"
   "ACA_RESOURCE_GROUP=${RESOURCE_GROUP}"
   "ACA_WORKER_JOB_NAME=${WORKER_JOB_NAME}"
   "MSA_SERVER_URL=${MSA_SERVER_URL:-https://api.colabfold.com}"
@@ -90,7 +90,7 @@ worker_env_vars=(
   "SERVICE_BUS_QUEUE_NAME=${SERVICE_BUS_QUEUE_NAME}"
   "BOLTZ2_BIN=boltz"
   "BOLTZ2_CACHE_DIR=/cache"
-  "BOLTZ2_RUN_TIMEOUT_SECONDS=${BOLTZ2_RUN_TIMEOUT_SECONDS:-14400}"
+  "BOLTZ2_RUN_TIMEOUT_SECONDS=${BOLTZ2_RUN_TIMEOUT_SECONDS:-0}"
   "BOLTZ2_DEVICES=${BOLTZ2_DEVICES:-1}"
   "MSA_SERVER_URL=${MSA_SERVER_URL:-https://api.colabfold.com}"
   "SUPABASE_URL=secretref:supurl"
@@ -101,6 +101,12 @@ worker_env_vars=(
   "AZURE_STORAGE_ACCOUNT_NAME=secretref:stname"
   "AZURE_STORAGE_ACCOUNT_KEY=secretref:stkey"
   "SERVICE_BUS_CONNECTION_STRING=secretref:sbconn"
+  "SMTP_ENABLED=${SMTP_ENABLED:-false}"
+  "SMTP_HOST=${SMTP_HOST:-}"
+  "SMTP_PORT=${SMTP_PORT:-587}"
+  "SMTP_USERNAME=secretref:smtpuser"
+  "SMTP_PASSWORD=secretref:smtppwd"
+  "SMTP_FROM_EMAIL=secretref:smtpfrom"
 )
 
 secrets_args=(
@@ -112,6 +118,9 @@ secrets_args=(
   "stname=${AZURE_STORAGE_ACCOUNT_NAME}"
   "stkey=${AZURE_STORAGE_ACCOUNT_KEY}"
   "sbconn=${SERVICE_BUS_CONNECTION_STRING}"
+  "smtpuser=${SMTP_USERNAME:-}"
+  "smtppwd=${SMTP_PASSWORD:-}"
+  "smtpfrom=${SMTP_FROM_EMAIL:-}"
 )
 
 echo "============================================================"
@@ -135,8 +144,17 @@ if ! az servicebus queue show \
   az servicebus queue create \
     -g "${RESOURCE_GROUP}" \
     --namespace-name "${SERVICE_BUS_NAMESPACE}" \
-    -n "${SERVICE_BUS_QUEUE_NAME}" >/dev/null
+    -n "${SERVICE_BUS_QUEUE_NAME}" \
+    --lock-duration "PT5M" \
+    --max-delivery-count 3 >/dev/null
 fi
+
+az servicebus queue update \
+  -g "${RESOURCE_GROUP}" \
+  --namespace-name "${SERVICE_BUS_NAMESPACE}" \
+  -n "${SERVICE_BUS_QUEUE_NAME}" \
+  --lock-duration "PT5M" \
+  --max-delivery-count 3 >/dev/null 2>&1 || true
 
 # ---------------------------------------------------------------------------
 # 2. Deploy API Container App
@@ -197,7 +215,7 @@ if az containerapp job show -g "${RESOURCE_GROUP}" -n "${WORKER_JOB_NAME}" >/dev
     --cpu "${WORKER_CPU}" \
     --memory "${WORKER_MEMORY}" \
     --workload-profile-name "${WORKER_WORKLOAD_PROFILE}" \
-    --parallelism 1 \
+    --parallelism 10 \
     --replica-completion-count 1 \
     --replica-retry-limit "${WORKER_REPLICA_RETRY_LIMIT}" \
     --replica-timeout "${WORKER_REPLICA_TIMEOUT}" \
@@ -225,7 +243,7 @@ else
     --cpu "${WORKER_CPU}" \
     --memory "${WORKER_MEMORY}" \
     --workload-profile-name "${WORKER_WORKLOAD_PROFILE}" \
-    --parallelism 1 \
+    --parallelism 10 \
     --replica-completion-count 1 \
     --replica-retry-limit "${WORKER_REPLICA_RETRY_LIMIT}" \
     --replica-timeout "${WORKER_REPLICA_TIMEOUT}" \

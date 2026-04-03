@@ -36,6 +36,7 @@ from boltz2_service.services.jobs import JobService
 from boltz2_service.services.spec_renderer import SpecRendererService
 from boltz2_service.services.spec_validator import SpecValidatorService
 from platform_core.auth.api_key_auth import ApiKeyAuthService
+from platform_core.models.profile import Profile
 
 logger = structlog.get_logger(__name__)
 
@@ -104,6 +105,62 @@ def _mcp_error_handler(func):
             return {"error": str(e)}
 
     return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Tool 0: get_my_api_key
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+@_mcp_error_handler
+def get_my_api_key(api_key: str = "") -> dict:
+    """
+    Return the current authenticated API key and user info.
+
+    Call this after MCP OAuth login to retrieve and save the API key locally.
+    The returned api_key can be stored in ~/.claude/skills/boltz2-predict/.env
+    for persistent access.
+
+    Args:
+        api_key: Boltz-2 API key (x-api-key). Usually auto-filled via OAuth Bearer token.
+
+    Returns:
+        dict with 'api_key', 'email', 'profile_id', 'key_name' on success,
+        or 'error' on failure.
+    """
+    # Resolve the effective key (Bearer token or explicit)
+    effective_key = api_key
+    if not effective_key:
+        try:
+            from mcp.server.auth.middleware.auth_context import get_access_token
+
+            access_token = get_access_token()
+            if access_token:
+                effective_key = access_token.token
+        except Exception:
+            pass
+
+    if not effective_key:
+        return {
+            "error": "Not authenticated. Connect via MCP OAuth first.",
+            "hint": "Run: claude mcp add boltz2 --transport http "
+            "https://boltz2-api.politebay-55ff119b.westus3.azurecontainerapps.io/mcp/mcp",
+        }
+
+    with mcp_auth(effective_key) as (db, key):
+        profile = db.get(Profile, key.profile_id) if key.profile_id else None
+        return {
+            "api_key": effective_key,
+            "email": profile.email if profile else None,
+            "profile_id": key.profile_id,
+            "key_name": key.name,
+            "save_hint": (
+                "Save this key for persistent access:\n"
+                f'mkdir -p ~/.claude/skills/boltz2-predict && '
+                f'echo "API_KEY={effective_key}" > ~/.claude/skills/boltz2-predict/.env'
+            ),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +399,7 @@ def submit_job(
     sampling_steps: int = 200,
     recycling_steps: int = 3,
     step_scale: float | None = None,
+    max_parallel_samples: int = 5,
     output_format: str = "mmcif",
     use_potentials: bool = False,
     use_msa_server: bool = True,
@@ -356,10 +414,11 @@ def submit_job(
     Args:
         spec_id: Validated spec_id from validate_spec or render_template.
         prediction_type: "structure", "affinity", "structure+affinity", or "virtual_screening".
-        diffusion_samples: Number of diffusion samples (1-10, default: 1).
+        diffusion_samples: Number of diffusion samples (1-1000, default: 1). Use higher values (e.g. 100) for ensemble predictions.
         sampling_steps: Number of sampling steps (50-1000, default: 200).
         recycling_steps: Number of recycling steps (1-10, default: 3).
         step_scale: Step scale factor (0.5-3.0, optional).
+        max_parallel_samples: Max samples processed in parallel on GPU (1-100, default: 5). Lower if OOM.
         output_format: "mmcif" or "pdb" (default: "mmcif").
         use_potentials: Enable potential energy guidance (default: False).
         use_msa_server: Use MSA server for alignment (default: True).
@@ -377,6 +436,7 @@ def submit_job(
         sampling_steps=sampling_steps,
         recycling_steps=recycling_steps,
         step_scale=step_scale,
+        max_parallel_samples=max_parallel_samples,
         output_format=output_format,
         use_potentials=use_potentials,
         use_msa_server=use_msa_server,

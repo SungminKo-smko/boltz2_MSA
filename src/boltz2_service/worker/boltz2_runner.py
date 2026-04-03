@@ -117,8 +117,8 @@ class Boltz2Runner:
 
         total_timeout = self.settings.boltz2_run_timeout_seconds
         elapsed = 0.0
-        while elapsed < total_timeout:
-            poll_interval = min(5, total_timeout - elapsed)
+        while total_timeout <= 0 or elapsed < total_timeout:
+            poll_interval = 5 if total_timeout <= 0 else min(5, total_timeout - elapsed)
             try:
                 returncode = process.wait(timeout=poll_interval)
                 break

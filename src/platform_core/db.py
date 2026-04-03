@@ -14,7 +14,16 @@ def get_engine():
     settings = get_settings()
     kwargs: dict = {"future": True}
 
-    if settings.database_url.startswith("postgresql"):
+    url = settings.database_url
+
+    if url.startswith("postgresql"):
+        # Normalize scheme so SQLAlchemy uses psycopg (v3), not the legacy psycopg2.
+        # Supabase/Render often provide plain "postgresql://..." URLs.
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql+psycopg2://"):
+            url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+
         # Supabase Pooler (transaction mode) 호환:
         # - NullPool: SQLAlchemy 자체 풀링 비활성화
         # - prepare_threshold=0: prepared statements 비활성화
@@ -22,7 +31,7 @@ def get_engine():
         kwargs["poolclass"] = NullPool
         kwargs["connect_args"] = {"prepare_threshold": 0}
 
-    return create_engine(settings.database_url, **kwargs)
+    return create_engine(url, **kwargs)
 
 
 @lru_cache(maxsize=1)
