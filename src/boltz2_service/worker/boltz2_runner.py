@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import threading
 from collections.abc import Callable
@@ -95,12 +96,14 @@ class Boltz2Runner:
         cancel_event: threading.Event | None = None,
     ) -> subprocess.CompletedProcess[str]:
         command = self.build_command(spec_path, output_dir, runtime_options)
+        env = {**os.environ, "TORCH_FLOAT32_MATMUL_PRECISION": "high"}
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=env,
         )
         captured: list[str] = []
 
