@@ -56,7 +56,7 @@ class QueueConsumer:
                 self._lock_renewer.register(
                     receiver,
                     message,
-                    max_lock_renewal_duration=self.settings.boltz2_run_timeout_seconds,
+                    max_lock_renewal_duration=self.settings.boltz2_run_timeout_seconds or 86400,
                 )
             payload = json.loads(b"".join(message.body).decode("utf-8"))
             return ConsumedMessage(body=payload, ack_token=message)
