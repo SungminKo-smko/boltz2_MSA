@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from boltz2_service.api.deps import get_current_api_key, get_db
+from boltz2_service.config import get_settings
 from boltz2_service.models import Boltz2Job
 from boltz2_service.schemas.jobs import PredictionJobCreate, PredictionJobListResponse, PredictionJobResponse
+from boltz2_service.services.aca_logs import AcaLogService
 from boltz2_service.services.jobs import JobService
 from platform_core.auth.api_key_auth import ApiKeyAuthService
 from platform_core.models.api_key import ApiKey
@@ -64,6 +67,32 @@ def get_job_status_public(
         "progress_percent": job.progress_percent,
         "status_message": job.status_message,
     }
+
+
+@router.get("/{job_id}/logs/public")
+async def stream_job_logs_public(
+    job_id: str,
+    tail: int = Query(default=50, ge=1, le=300),
+    db: Session = Depends(get_db),
+):
+    """인증 없이 job_id로 로그를 스트리밍한다 (artifact 전용).
+
+    job_id가 UUID라 추측 불가능하며, 로그에 민감 정보가 포함되지 않으므로
+    브라우저 artifact에서 CORS 제약 없이 호출할 수 있도록 공개 엔드포인트로 제공.
+    """
+    job = db.get(Boltz2Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.worker_job_name:
+        raise HTTPException(status_code=404, detail="No worker execution linked")
+
+    log_service = AcaLogService(get_settings())
+
+    async def generate():
+        async for chunk in log_service.stream_async(job.worker_job_name, tail=tail):
+            yield chunk
+
+    return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
 
 
 @router.get("/{job_id}/artifacts")
