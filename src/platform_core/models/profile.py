@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, String
@@ -8,6 +9,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from platform_core.models.base import Base
 from platform_core.time_utils import utc_now
+
+if TYPE_CHECKING:
+    from platform_core.models.api_key import ApiKey
 
 
 def _uuid() -> str:
