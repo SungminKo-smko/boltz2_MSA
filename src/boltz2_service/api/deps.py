@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from boltz2_service.config import get_settings
 from platform_core.auth.api_key_auth import ApiKeyAuthService
 from platform_core.auth.supabase_auth import SupabaseAuthError, verify_supabase_jwt
 from platform_core.db import get_db_session
