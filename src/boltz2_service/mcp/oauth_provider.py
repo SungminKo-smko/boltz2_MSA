@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import httpx
@@ -17,7 +17,6 @@ from cachetools import TTLCache
 from mcp.server.auth.provider import (
     AuthorizationCode,
     AuthorizationParams,
-    OAuthAuthorizationServerProvider,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
@@ -31,7 +30,6 @@ from platform_core.db import SessionLocal
 from platform_core.models.api_key import ApiKey
 from platform_core.models.profile import Profile
 from platform_core.security import create_api_key as create_api_key_pair
-from platform_core.time_utils import utc_now
 
 logger = structlog.get_logger(__name__)
 

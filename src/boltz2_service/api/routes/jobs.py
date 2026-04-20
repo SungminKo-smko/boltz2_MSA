@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from boltz2_service.api.deps import get_current_api_key, get_db
 from boltz2_service.config import get_settings
-from boltz2_service.enums import JobStatus
 from boltz2_service.models import Boltz2Job
 from boltz2_service.schemas.jobs import PredictionJobCreate, PredictionJobListResponse, PredictionJobResponse
 from boltz2_service.services.aca_logs import AcaLogService

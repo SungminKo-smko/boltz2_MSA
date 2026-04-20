@@ -2,7 +2,7 @@
 Boltz-2 MCP Server — FastMCP 기반 MCP 서버.
 
 boltz2_service 서비스 레이어를 직접 호출하여 HTTP 왕복 없이 동작한다.
-13개 tool: create_upload_url, upload_structure, validate_spec, render_template,
+14개 tool: get_my_api_key, create_upload_url, upload_structure, validate_spec, render_template,
 submit_job, get_job, list_jobs, cancel_job, get_logs,
 get_artifacts, list_templates, list_workers, submit_nanobody_structure_prediction.
 
@@ -32,6 +32,7 @@ from boltz2_service.models import Boltz2Asset
 from boltz2_service.repositories import AssetRepository
 from boltz2_service.schemas.jobs import Boltz2RuntimeOptions, PredictionJobCreate
 from boltz2_service.schemas.specs import RenderSpecRequest
+from boltz2_service.services.aca_logs import AcaLogService
 from boltz2_service.services.jobs import JobService
 from boltz2_service.services.spec_renderer import SpecRendererService
 from boltz2_service.services.spec_validator import SpecValidatorService
@@ -550,17 +551,23 @@ def cancel_job(job_id: str, api_key: str = "") -> dict:
 
 @mcp.tool()
 @_mcp_error_handler
-def get_logs(job_id: str, tail: int = 100, api_key: str = "") -> dict:
+def get_logs(job_id: str, tail: int = 50, api_key: str = "") -> dict:
     """
-    Get worker progress and log info for a prediction job.
+    Get worker progress and recent ACA log lines for a prediction job.
+
+    Fetches DB progress fields (status, stage, percent) and, when the job
+    has an associated ACA worker execution, tails the live container log
+    stream via AcaLogService. If the ACA call fails, DB progress is still
+    returned along with a 'log_error' key.
 
     Args:
         job_id: The job UUID.
-        tail: Reserved for future ACA log streaming (default: 100).
+        tail: Number of recent log lines to retrieve from ACA (default: 50).
         api_key: Boltz-2 API key (x-api-key).
 
     Returns:
-        dict with job progress info, or 'error' on failure.
+        dict with job progress info and optional 'log_tail', 'live_stage',
+        'live_progress' fields, or 'error' on failure.
     """
     with mcp_auth(api_key) as (db, key):
         service = JobService(db)
@@ -574,8 +581,21 @@ def get_logs(job_id: str, tail: int = 100, api_key: str = "") -> dict:
             "status_message": job.status_message,
             "failure_code": job.failure_code,
             "failure_message": job.failure_message,
-            "tail": tail,
         }
+
+        if job.worker_job_name:
+            try:
+                svc = AcaLogService(get_settings())
+                lines = svc.get_recent_lines(job.worker_job_name, tail=tail)
+                stage, progress = svc.parse_live_progress(lines)
+                result["log_tail"] = lines
+                if stage:
+                    result["live_stage"] = stage
+                if progress is not None:
+                    result["live_progress"] = progress
+            except Exception as exc:  # noqa: BLE001
+                result["log_error"] = str(exc)[:200]
+
         return result
 
 
@@ -637,28 +657,75 @@ def list_templates(api_key: str = "") -> dict:
 
 @mcp.tool()
 @_mcp_error_handler
-def list_workers(api_key: str = "") -> dict:
+def list_workers(api_key: str = "", limit: int = 10) -> dict:
     """
-    List active worker information (admin).
+    List recent worker (ACA Job) executions.
 
-    Currently returns basic worker status. ACA management integration
-    will be added when deployed to Azure Container Apps.
+    Queries the Azure ARM API for the most recent executions of the
+    boltz2-worker ACA Job. Returns execution name, status, start/end time
+    for each execution. Requires the API's Managed Identity to have
+    Reader/Contributor on the worker job scope.
+
+    Returns an empty list with a message when ACA settings are not configured
+    (e.g. local dev environment).
 
     Args:
         api_key: Boltz-2 API key (x-api-key).
+        limit: Maximum number of recent executions to return (default: 10).
 
     Returns:
         dict with 'workers' (list), 'total' (int), or 'error' on failure.
     """
+    import httpx
+    from azure.identity import DefaultAzureCredential
+
     # Auth check only — no DB work needed
     with mcp_auth(api_key) as (_db, _key):
         pass
 
-    return {
-        "workers": [],
-        "total": 0,
-        "message": "ACA worker management not yet configured. Use get_job/list_jobs to check job status.",
-    }
+    settings = get_settings()
+    sub = settings.aca_subscription_id
+    rg = settings.aca_resource_group
+    job_name = settings.aca_worker_job_name
+    if not all([sub, rg, job_name]):
+        return {
+            "workers": [],
+            "total": 0,
+            "message": "ACA_SUBSCRIPTION_ID / ACA_RESOURCE_GROUP / ACA_WORKER_JOB_NAME 환경변수 필요",
+        }
+
+    try:
+        cred = DefaultAzureCredential()
+        token = cred.get_token("https://management.azure.com/.default").token
+    except Exception as exc:  # noqa: BLE001
+        return {"workers": [], "total": 0, "error": f"auth failed: {exc}"}
+
+    url = (
+        f"https://management.azure.com/subscriptions/{sub}"
+        f"/resourceGroups/{rg}/providers/Microsoft.App/jobs/{job_name}/executions"
+        f"?api-version=2024-03-01"
+    )
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.get(url, headers={"Authorization": f"Bearer {token}"})
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return {"workers": [], "total": 0, "error": f"ACA API failed: {exc}"}
+
+    executions = data.get("value", [])[:limit]
+    workers = []
+    for e in executions:
+        props = e.get("properties", {})
+        workers.append(
+            {
+                "execution_name": e.get("name"),
+                "status": props.get("status"),
+                "start_time": props.get("startTime"),
+                "end_time": props.get("endTime"),
+            }
+        )
+    return {"workers": workers, "total": len(workers)}
 
 
 # ---------------------------------------------------------------------------
