@@ -20,5 +20,8 @@ jobs:
           pip install -e '.[dev]'
       - name: Ruff
         run: ruff check .
+      # 현재 tests/ 디렉터리가 없어 pytest가 exit code 5("no tests collected")로
+      # 실패함. 테스트 추가 전까지 exit 5만 성공으로 취급, 나머지 실패는 그대로 fail.
+      # 자세한 내용: docs/testing-strategy.md
       - name: Pytest
-        run: pytest
+        run: pytest || [ $? -eq 5 ]
