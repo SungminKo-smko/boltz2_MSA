@@ -16,7 +16,7 @@ boltzgen(나노바디 디자인) → Boltz-2(구조 예측) cross-model workflow
 ┌──────────▼──────────────────────────────────────────┐
 │              API Server (FastAPI)                     │
 │  OAuth 2.1 (MCP) │ Google OAuth │ API Key Auth       │
-│  21 REST endpoints │ 13 MCP tools │ Device Auth      │
+│  21 REST endpoints │ 14 MCP tools │ Device Auth      │
 │  Spec validation (boltz CPU) │ Job submission        │
 │  Port 8001 │ Azure Container Apps                    │
 └──────┬─────────────┬───────────────┬────────────────┘
@@ -40,7 +40,7 @@ boltzgen(나노바디 디자인) → Boltz-2(구조 예측) cross-model workflow
 
 ## Features
 
-- **13 MCP Tools**: create_upload_url, upload_structure, validate_spec, render_template, submit_job, get_job, list_jobs, cancel_job, get_logs, get_artifacts, list_templates, list_workers, submit_nanobody_structure_prediction
+- **14 MCP Tools**: get_my_api_key, create_upload_url, upload_structure, validate_spec, render_template, submit_job, get_job, list_jobs, cancel_job, get_logs, get_artifacts, list_templates, list_workers, submit_nanobody_structure_prediction
 - **21+ REST API Endpoints**: Full CRUD for uploads, specs, jobs, auth, device auth, health + 공개 로그 스트리밍
 - **OAuth 2.1**: Claude Code HTTP MCP transport with Google login via Supabase
 - **Device Auth Flow**: MCP clients without browser access
@@ -149,7 +149,7 @@ boltz2_MSA/
 ├── src/
 │   ├── boltz2_service/         # Boltz-2 API + MCP + Worker
 │   │   ├── api/                # FastAPI app + routes (auth, jobs, specs, uploads)
-│   │   ├── mcp/                # MCP server (13 tools) + OAuth provider
+│   │   ├── mcp/                # MCP server (14 tools) + OAuth provider
 │   │   ├── worker/             # GPU job processor + queue consumer
 │   │   ├── services/           # Business logic (jobs, spec renderer/validator)
 │   │   ├── schemas/            # Pydantic request/response models
