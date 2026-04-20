@@ -57,6 +57,12 @@ WORKER_MIN_EXECUTIONS="${WORKER_MIN_EXECUTIONS:-0}"
 WORKER_WORKLOAD_PROFILE="${WORKER_WORKLOAD_PROFILE:-ConsumptionA100}"
 
 # ---------------------------------------------------------------------------
+# Azure Files volume configuration (boltz 모델 가중치 공유 캐시)
+# ---------------------------------------------------------------------------
+CACHE_STORAGE_NAME="${CACHE_STORAGE_NAME:-boltz2cache}"
+CACHE_MOUNT_PATH="${CACHE_MOUNT_PATH:-/cache}"
+
+# ---------------------------------------------------------------------------
 # Environment variables for containers
 # ---------------------------------------------------------------------------
 
@@ -79,6 +85,8 @@ api_env_vars=(
   "AZURE_STORAGE_ACCOUNT_NAME=secretref:stname"
   "AZURE_STORAGE_ACCOUNT_KEY=secretref:stkey"
   "SERVICE_BUS_CONNECTION_STRING=secretref:sbconn"
+  "BOLTZ2_CACHE_DIR=/cache"
+  "HF_HOME=/cache"
 )
 
 worker_env_vars=(
@@ -90,6 +98,7 @@ worker_env_vars=(
   "SERVICE_BUS_QUEUE_NAME=${SERVICE_BUS_QUEUE_NAME}"
   "BOLTZ2_BIN=boltz"
   "BOLTZ2_CACHE_DIR=/cache"
+  "HF_HOME=/cache"
   "BOLTZ2_RUN_TIMEOUT_SECONDS=${BOLTZ2_RUN_TIMEOUT_SECONDS:-0}"
   "BOLTZ2_DEVICES=${BOLTZ2_DEVICES:-1}"
   "MSA_SERVER_URL=${MSA_SERVER_URL:-https://api.colabfold.com}"
@@ -131,6 +140,72 @@ echo "  API App:           ${API_APP_NAME} (${API_IMAGE})"
 echo "  Worker Job:        ${WORKER_JOB_NAME} (${WORKER_IMAGE})"
 echo "  Queue:             ${SERVICE_BUS_QUEUE_NAME}"
 echo "============================================================"
+
+# ---------------------------------------------------------------------------
+# Helper: attach Azure Files volume to a Container App
+# ---------------------------------------------------------------------------
+
+_apply_volume_to_app() {
+  local rg="$1" name="$2" storage_name="$3" mount_path="$4"
+  local tmp_spec
+  tmp_spec="$(mktemp -t aca-spec-XXXXXX.yaml)"
+
+  az containerapp show -g "${rg}" -n "${name}" -o yaml > "${tmp_spec}"
+
+  python3 - "${tmp_spec}" "${storage_name}" "${mount_path}" <<'PY'
+import sys, yaml
+path, storage_name, mount_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    doc = yaml.safe_load(f)
+tmpl = doc.setdefault("properties", {}).setdefault("template", {})
+tmpl["volumes"] = [{
+    "name": storage_name,
+    "storageName": storage_name,
+    "storageType": "AzureFile",
+}]
+for c in tmpl.get("containers", []):
+    vm = c.get("volumeMounts") or []
+    vm = [m for m in vm if m.get("volumeName") != storage_name]
+    vm.append({"volumeName": storage_name, "mountPath": mount_path})
+    c["volumeMounts"] = vm
+with open(path, "w") as f:
+    yaml.safe_dump(doc, f, sort_keys=False)
+PY
+
+  az containerapp update -g "${rg}" -n "${name}" --yaml "${tmp_spec}" >/dev/null
+  rm -f "${tmp_spec}"
+}
+
+_apply_volume_to_job() {
+  local rg="$1" name="$2" storage_name="$3" mount_path="$4"
+  local tmp_spec
+  tmp_spec="$(mktemp -t aca-job-spec-XXXXXX.yaml)"
+
+  az containerapp job show -g "${rg}" -n "${name}" -o yaml > "${tmp_spec}"
+
+  python3 - "${tmp_spec}" "${storage_name}" "${mount_path}" <<'PY'
+import sys, yaml
+path, storage_name, mount_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    doc = yaml.safe_load(f)
+tmpl = doc.setdefault("properties", {}).setdefault("template", {})
+tmpl["volumes"] = [{
+    "name": storage_name,
+    "storageName": storage_name,
+    "storageType": "AzureFile",
+}]
+for c in tmpl.get("containers", []):
+    vm = c.get("volumeMounts") or []
+    vm = [m for m in vm if m.get("volumeName") != storage_name]
+    vm.append({"volumeName": storage_name, "mountPath": mount_path})
+    c["volumeMounts"] = vm
+with open(path, "w") as f:
+    yaml.safe_dump(doc, f, sort_keys=False)
+PY
+
+  az containerapp job update -g "${rg}" -n "${name}" --yaml "${tmp_spec}" >/dev/null
+  rm -f "${tmp_spec}"
+}
 
 # ---------------------------------------------------------------------------
 # 1. Ensure Service Bus queue exists
@@ -176,6 +251,8 @@ if az containerapp show -g "${RESOURCE_GROUP}" -n "${API_APP_NAME}" >/dev/null 2
     --min-replicas "${API_MIN_REPLICAS}" \
     --max-replicas "${API_MAX_REPLICAS}" \
     --replace-env-vars "${api_env_vars[@]}" >/dev/null
+  echo "[API] Mounting cache volume on ${API_APP_NAME}..."
+  _apply_volume_to_app "${RESOURCE_GROUP}" "${API_APP_NAME}" "${CACHE_STORAGE_NAME}" "${CACHE_MOUNT_PATH}"
 else
   az containerapp create \
     -g "${RESOURCE_GROUP}" \
@@ -195,6 +272,8 @@ else
     --revisions-mode single \
     --secrets "${secrets_args[@]}" \
     --env-vars "${api_env_vars[@]}" >/dev/null
+  echo "[API] Mounting cache volume on ${API_APP_NAME}..."
+  _apply_volume_to_app "${RESOURCE_GROUP}" "${API_APP_NAME}" "${CACHE_STORAGE_NAME}" "${CACHE_MOUNT_PATH}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -230,6 +309,8 @@ if az containerapp job show -g "${RESOURCE_GROUP}" -n "${WORKER_JOB_NAME}" >/dev
       "messageCount=1" \
     --scale-rule-auth "connection=sbconn" \
     --replace-env-vars "${worker_env_vars[@]}" >/dev/null
+  echo "[Worker] Mounting cache volume on ${WORKER_JOB_NAME}..."
+  _apply_volume_to_job "${RESOURCE_GROUP}" "${WORKER_JOB_NAME}" "${CACHE_STORAGE_NAME}" "${CACHE_MOUNT_PATH}"
 else
   az containerapp job create \
     -g "${RESOURCE_GROUP}" \
@@ -259,6 +340,8 @@ else
     --scale-rule-auth "connection=sbconn" \
     --secrets "${secrets_args[@]}" \
     --env-vars "${worker_env_vars[@]}" >/dev/null
+  echo "[Worker] Mounting cache volume on ${WORKER_JOB_NAME}..."
+  _apply_volume_to_job "${RESOURCE_GROUP}" "${WORKER_JOB_NAME}" "${CACHE_STORAGE_NAME}" "${CACHE_MOUNT_PATH}"
 fi
 
 # ---------------------------------------------------------------------------
